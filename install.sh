@@ -7,7 +7,7 @@ set -euo pipefail
 export MSYS_NO_PATHCONV=1
 cd "$(dirname "$0")"
 
-DOMAIN="" EMAIL="" PORT=8080 IMAGE="" VERSION="" IMAGE_FILE=""
+DOMAIN="" EMAIL="" PORT=8080 IMAGE="" VERSION="" IMAGE_FILE="" FRESH=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --domain) DOMAIN="$2"; shift ;;
@@ -56,6 +56,7 @@ docker compose version >/dev/null 2>&1 || { echo "Docker Compose (the 'docker co
 if [ -f .env ]; then
   echo "This folder already has settings (.env). Starting Developer Interface with them; edit .env to change anything."
 else
+  FRESH=1
   cp .env.example .env
   set_env() { sed -i.bak "s#^$1=.*#$1=$2#" .env && rm -f .env.bak; }
   set_env DB_PASSWORD "$(secret 24)"
@@ -78,6 +79,42 @@ else
 fi
 
 machine_id_mount
+
+# Stop early, with a clear message, when a port Developer Interface needs is already taken (by another app or container).
+env_value() { grep -E "^$1=" .env | tail -1 | cut -d= -f2-; }
+port_user() {
+  local name
+  name=$(docker ps --format '{{.Names}} {{.Ports}}' 2>/dev/null | grep -E ":$1->" | head -1 | cut -d' ' -f1 || true)
+  if [ -n "$name" ]; then echo "the Docker container $name"; return 0; fi
+  if (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; then echo "another program on this computer"; return 0; fi
+  return 1
+}
+free_port() { local p=$(($1 + 1)); while [ "$p" -lt $(($1 + 50)) ]; do port_user "$p" >/dev/null || { echo "$p"; return; }; p=$((p + 1)); done; echo $(($1 + 5)); }
+if [ -z "$(docker compose ps -q app 2>/dev/null)" ]; then
+  APP_PORT_NOW=$(env_value APP_PORT); APP_PORT_NOW=${APP_PORT_NOW:-8080}
+  if who=$(port_user "$APP_PORT_NOW"); then
+    NEXT=$(free_port "$APP_PORT_NOW")
+    say "Port $APP_PORT_NOW is already in use, by $who."
+    if [ -n "$FRESH" ]; then
+      rm -f .env docker-compose.override.yml
+      echo "Run the installer again on a free port, for example $NEXT:"
+      echo "  cd \"$(pwd)\" && ./install.sh --port $NEXT${DOMAIN:+ --domain $DOMAIN --email $EMAIL}"
+    else
+      echo "Choose a free port, for example $NEXT: set APP_PORT=$NEXT (and the port in APP_URL) in $(pwd)/.env, then run ./install.sh again."
+    fi
+    exit 1
+  fi
+  if [ "$(env_value COMPOSE_PROFILES)" = "https" ]; then
+    for p in 80 443; do
+      if who=$(port_user "$p"); then
+        say "Port $p is already in use, by $who. HTTPS needs ports 80 and 443: stop that, then run ./install.sh again."
+        [ -n "$FRESH" ] && rm -f .env docker-compose.override.yml
+        exit 1
+      fi
+    done
+  fi
+fi
+
 if [ -n "$IMAGE_FILE" ]; then docker load -i "$IMAGE_FILE"; else docker compose pull; fi
 docker compose up -d
 
