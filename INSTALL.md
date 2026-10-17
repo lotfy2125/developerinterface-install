@@ -31,7 +31,18 @@ licence is checked there, offline.
    curl -fsSL https://raw.githubusercontent.com/lotfy2125/developerinterface-install/main/get.sh | bash -s -- --domain di.acme.com --email it@acme.com
    ```
 
-3. Open the address it prints. The first person to sign up becomes the admin.
+   **On Windows:** run these in **Git Bash** (it comes with Git for Windows), with Docker Desktop running. Not in
+   PowerShell, and not in Docker Desktop's own WSL shell (`docker-desktop`).
+
+   **Port 8080 already in use** (another app or container on this server)? The installer says so and suggests a free
+   port. Run it again with that port:
+
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/lotfy2125/developerinterface-install/main/get.sh | bash -s -- --port 8085
+   ```
+
+3. Open the address it prints. The first start takes about a minute; if the page doesn't load yet, wait and reload. The
+   first person to sign up becomes the admin.
 
 ## Activate
 
@@ -48,10 +59,14 @@ Until a licence is added, everyone can sign in and open what they saved, but no 
 | Task | Command (in the `developerinterface` folder) |
 |---|---|
 | Update to the newest version (backs up first) | `./update.sh` |
+| Update to a given version | `./update.sh 2.0.5` |
 | Back up (accounts, saved projects, the licence) | `./backup.sh` |
 | Restore a backup | `./restore.sh backups/<file>.sql.gz` |
 | See the logs | `docker compose logs -f app` |
 | Stop / start | `docker compose stop` / `docker compose up -d` |
+
+Installed with version 2.0.4 or older? Name the version the first time you update (`./update.sh 2.0.5`). From then
+on, `./update.sh` finds the newest version by itself.
 
 ## Email (optional)
 
@@ -81,6 +96,15 @@ tar xzf developerinterface-install-<version>.tar.gz && cd developerinterface
 
 A licence works on one server. After moving (restore a backup on the new server), the admin sends the activation request
 from the new server's Licence screen, and we send a licence for it.
+
+## If something goes wrong
+
+| What you see | What to do |
+|---|---|
+| `port is already allocated` | Another app uses the port. Set a free one: `APP_PORT=8085` in `.env` (and the port in `APP_URL`), then `docker compose up -d`. |
+| The page says "isn't working" or "didn't send any data" | It's still starting. Wait a minute and reload; `docker compose logs app` shows its progress. |
+| `cannot stop container … did not receive an exit event` (Windows) | A Docker Desktop hiccup. Restart Docker Desktop, then `docker compose up -d`. |
+| `Docker isn't installed or isn't running` | Start Docker Desktop (Windows, macOS), or install Docker (Linux, step 1). |
 
 ## Help
 
